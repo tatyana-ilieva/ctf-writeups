@@ -96,8 +96,9 @@ Your flag is: picoCTF{L00k5_l1k3_y0u_solv3d_it_ec8a64c7}
 
 ## Why `--` and Not `#`?
 
-A common SQL injection comment character is `#` (used in MySQL). However, this application uses **SQLite**, which does not recognize `#` as a comment. SQLite's comment syntax is `--`. Using `#` would leave a dangling quote in the query and cause a syntax error, whereas `--` cleanly terminates the query and bypasses the password check.
+After attemoting to bypass the login page using a standard SQL injection, it became clear that using the # 
 
+A common SQL injection comment character is `#` (used in MySQL). However, this application uses **SQLite**, which does not recognize `#` as a comment. SQLite's comment syntax is `--`. Using `#` would leave a dangling quote in the query and cause a syntax error, whereas `--` cleanly terminates the query and bypasses the password check.
 
 ## Remediation
 
