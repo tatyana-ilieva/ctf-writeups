@@ -13,7 +13,7 @@ This challenge provides a stripped ELF 64-bit binary that prompts the user for a
 
 ## Context
 
-The challenge provides a single binary file called `bbbloat`. Before doing anything else, the first step is always to understand what kind of file you are dealing with.
+The challenge provides a single binary file called `bbbloat`. Before doing anything else, I wanted to understand the file I was dealing with.
 
 ###Identifying the file type with `file`
 
