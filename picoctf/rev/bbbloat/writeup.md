@@ -17,7 +17,7 @@ The challenge provides a single binary file called `bbbloat`. Before doing anyth
 
 ###Identifying the file type with `file`
 
-The `file` command reads the bytes at the start of a file and tells you what it actually is, regardless of the filename or extension. This is important in CTFs because files are sometimes mislabeled or have no extension at all.
+The `file` command reads the bytes at the start of a file and tells you what it actually is, regardless of the filename or extension.
 
 ```
 $ file bbbloat
@@ -32,11 +32,11 @@ This means:
 - **LSB**: Least Significant Byte first — i.e., little-endian byte ordering. This is standard for x86/x86-64.
 - **pie executable**: Position Independent Executable. The binary is compiled so it can be loaded at any memory address. The OS will randomize the base address each run via ASLR (Address Space Layout Randomization). This makes certain exploit techniques harder but doesn't affect our approach here since we're doing static analysis.
 - **dynamically linked**: The binary relies on shared libraries (like `libc`) that are loaded at runtime rather than being compiled into the binary itself. This means calls to functions like `printf` and `scanf` go through the Procedure Linkage Table (PLT).
-- **stripped**: Debug symbols have been removed. Normally, a compiled binary keeps a symbol table mapping function names like `main` to their addresses. Stripping removes this, so a disassembler like Ghidra will label functions generically as `FUN_00101249` instead of `main`. This is a deliberate obfuscation step.
+- **stripped**: Debug symbols have been removed. Normally, a compiled binary keeps a symbol table mapping function names like `main` to their addresses. Stripping removes this, so a disassembler like Ghidra will label functions generically as `FUN_00101249` instead of `main`. This is an obfuscation step.
 
 ### Running the binary
 
-Then I rain, the binary to understand what it does at face value:
+Then I ran the binary to understand what it does at face value:
 
 ```
 $ chmod +x bbbloat    # make sure it's executable
@@ -46,7 +46,7 @@ What's my favorite number?
 Sorry, that's not it!
 ```
 
-We can see the program:
+The program:
 1. Prints a prompt asking for a number
 2. Reads a number from stdin
 3. Checks if it matches some expected value
@@ -78,7 +78,7 @@ I then tried `ltrace` and `strace`.
 
 ### ltrace — Library Call Tracer
 
-`ltrace` intercepts and logs every call a program makes to shared library functions. This is useful because many programs compare passwords or secrets using library calls like `strcmp("user_input", "secret")` — and `ltrace` would show both arguments.
+`ltrace` intercepts and logs every call a program makes to shared library functions. This is useful because many programs compare passwords or secrets using library calls like `strcmp("user_input", "secret")` and `ltrace` would show both arguments.
 
 ```
 $ ltrace ./bbbloat
@@ -88,11 +88,11 @@ Sorry, that's not it!
 +++ exited (status 0) +++
 ```
 
-`ltrace` produces almost no output here. The program runs and exits, but no library calls with interesting arguments are logged. This tells us the comparison is **not** done through a function like `strcmp` — it's handled inline in the binary's own code, likely as a direct integer comparison (`==`). This means `ltrace` won't give us the answer.
+`ltrace` produces almost no output here. The program runs and exits, but no library calls with interesting arguments are logged. This tells us the comparison is **not** done through a function like `strcmp`. This means `ltrace` won't yield the answer.
 
 ### strace — System Call Tracer
 
-`strace` operates one level lower than `ltrace`. Instead of library calls, it intercepts raw system calls — the interface between a program and the Linux kernel. Common system calls include `read` (reading input), `write` (printing output), `open` (opening files), and `mmap` (mapping memory).
+`strace` operates one level lower than `ltrace`. It intercepts raw system calls. Common system calls that I saw include `read` (reading input), `write` (printing output) and `mmap` (mapping memory).
 
 ```
 $ strace ./bbbloat
@@ -171,13 +171,13 @@ Since the binary is stripped, I couldn't just look for a function named `main`. 
 ## Vulnerability ##
 In the main code, 
 
-local_10 = *(long *)(in_FS_OFFSET + 0x28) is a compiler-inserted stack canary — a security value read from a special memory region at function entry and checked again before the function returns. If the stack has been tampered with, __stack_chk_fail() is called and the program crashes. This does not affect our approach since we are not doing a memory exploit.
+local_10 = *(long *)(in_FS_OFFSET + 0x28) is a compiler-inserted stack canary — a security value read from a special memory region at function entry and checked again before the function returns. If the stack has been tampered with, __stack_chk_fail() is called and the program crashes. This wasn't relevant since this is not a memory exploit.
 
-local_38 through local_20 are large hex constants loaded onto the stack. These are the obfuscated flag data — stored as raw integer values rather than a readable string, which is why strings would not find them.
+local_38 through local_20 are hex constants loaded onto the stack. These are the obfuscated flag data that are stored as raw integer values rather than a readable string, which is why strings would not find them.
 local_48 is the variable holding the user's input from scanf.
 
-if (local_48 == 0x86187) is the key check — a direct integer equality comparison against a hardcoded constant. This is the vulnerability. The expected value is sitting plainly in the binary, readable to anyone with a decompiler.
-FUN_00101249 is called if the check passes, taking the obfuscated buffer as an argument and returning a decoded string __s that gets printed with fputs. We double-clicked into this function to understand what it does.
+if (local_48 == 0x86187) is the key check; it is a direct integer equality comparison against a hardcoded constant. This is the vulnerability. The expected value is sitting plainly in the binary, readable to anyone with a decompiler.
+FUN_00101249 is called if the check passes, taking the obfuscated buffer as an argument and returning a decoded string __s that gets printed with fputs. I double-clicked into this function to understand what it does.
 Decompiled pseudocode — FUN_00101249 (decode function): 
 
 ```c
@@ -213,14 +213,6 @@ The if condition — ' ' < __s[local_20] and __s[local_20] != '\x7f' — checks 
 
 The transformation adds 0x2f to each qualifying character. If the result is below 0x7f (stays in printable range), it uses that value directly. If it would go above 0x7f, it wraps around by subtracting 0x5e. This is a ROT-style Caesar cipher applied to the printable ASCII range — each character is shifted forward by 47 positions (0x2f) with wrapping, decoding the obfuscated bytes stored in local_38 through local_20. return __s returns the decoded flag string back to main, where it is printed with fputs
 
-### Converting the comparison constant
-
-We need to enter `0x86187` as a decimal integer since `scanf` reads `%d`:
-
-```
-$ python3 -c "print(0x86187)"
-549255
-```
 ---
 
 ## Exploitation
@@ -253,7 +245,7 @@ Yielding:
 | Comparison mechanism | Direct integer equality: `user_input == 0x86187` (549255 decimal) |
 | Flag storage | Bytes packed into stack-allocated integer literals, never a contiguous string |
 | Obfuscation method | ROT-style Caesar cipher: each byte shifted by +0x2f with wraparound at 0x7f |
-| Deobfuscation trigger | Correct input passes the `if` check, calling the XOR decode loop |
+| Deobfuscation trigger | Correct input passes the `if` check, calling the decode loop |
 | Relevant mitigations | PIE present but irrelevant; no canary; no anti-debug |
 
 ---
@@ -264,4 +256,6 @@ The fundamental issue is that both the secret input and the encoded flag are har
 
 - **Server-side validation**: Send the user's input to a remote server for comparison rather than embedding the expected value locally. The binary would never contain the answer.
 - **Cryptographic hash comparison**: Store a hash of the correct answer instead of the answer itself — compare sha256(input) against a stored digest. A hash cannot be reversed, so reading it out of the binary does not reveal the original value.
-- **Stronger obfuscation**: A ROT-style Caesar cipher with a fixed shift is trivially reversible once identified in the decompiler. A proper keyed cipher would require knowing the key to reverse, significantly raising the bar.
+- **Stronger obfuscation**: A ROT-style Caesar cipher with a fixed shift is trivially reversible once identified in the decompiler. A proper keyed cipher would require knowing the key to reverse. While a more complex or keyed cipher would make analysis more time-consuming, it would not really secure the flag. Because both the encoded data and the decoding logic reside in the binary, a reverse engineer can still recover the original value through static analysis.
+
+Written by Tatyana Ilieva 
